@@ -8,6 +8,7 @@ $lang = "en";
 $lang = "ptbr";
 
 require_once("langs.php");
+require_once("formConnection.php");
 
 /**
  * Application class
@@ -18,13 +19,24 @@ class Application
 	 * Construtor
 	 */
 	public function __construct()
-	{
+	{	
+
+		// Read conf
+		$this->config = json_decode(file_get_contents(APPLICATION_PATH . "/config.json"), TRUE);
+		if(!isset($this->config['panel_width'])) {
+			$this->config['panel_width'] = 300;
+		}
+		if(!isset($this->config['window_maximized'])) {
+			$this->config['window_maximized'] = TRUE;
+		}
+
 		// Create toolbar
 		$this->IToolbar();
 
 		// Paned
-		$paned = new GtkPaned(GtkOrientation::HORIZONTAL); // GtkHPaned and GtkVPaned is deprecated
-		// $paned->set_position(120);
+		$this->widgets['paned'] = new GtkPaned(GtkOrientation::HORIZONTAL);
+		$this->widgets['paned']->set_position($this->config['panel_width']);
+		// $this->widgets['paned']->set_position(120);
 
 		// Treeview
 		$tree = new GtkTreeView();
@@ -41,14 +53,14 @@ class Application
 		$tree->set_model($model);
 
 		$scroll = new GtkScrolledWindow();
-		$scroll->add($tree); // add_with_viewport is deprecated
+		$scroll->add($tree);
 		$scroll->set_policy(GtkPolicyType::AUTOMATIC, GtkPolicyType::AUTOMATIC);
-		$paned->add1($scroll);
+		$this->widgets['paned']->add1($scroll);
 
 		// Create notebook
 		$this->ntb = new GtkNotebook();
 		$this->ntb->set_tab_pos(GtkPositionType::TOP);
-		$paned->add2($this->ntb);
+		$this->widgets['paned']->add2($this->ntb);
 
 		
 		$this->create_new_tab("GtkLabel.cpp");
@@ -58,8 +70,8 @@ class Application
 
 		// VBox
 		$main_box = new GtkVBox();
-		$main_box->pack_start($this->widget['mainToolbar'], FALSE, FALSE);
-		$main_box->pack_start($paned, TRUE, TRUE);
+		$main_box->pack_start($this->widgets['mainToolbar'], FALSE, FALSE);
+		$main_box->pack_start($this->widgets['paned'], TRUE, TRUE);
 		
 		// $this->b->connect("clicked", [$this, "b_clicked"]);
 
@@ -75,6 +87,9 @@ class Application
 		// $this->widgets['mainWindow']->set_interactive_debugging(TRUE);
 
 		// Show all
+		if($this->config['window_maximized']) {
+			$this->widgets['mainWindow']->maximize();
+		}
 		$this->widgets['mainWindow']->show_all();
 
 
@@ -97,26 +112,48 @@ class Application
 	public function IToolbar()
 	{
 		// Toolbar
-		$this->widget['mainToolbar'] = new GtkToolbar();
+		$this->widgets['mainToolbar'] = new GtkToolbar();
 
 		// New
 		$tlb_btnnew = new GtkToolButton("");
 		$tlb_btnnew->set_icon_name("document-new");
-		$this->widget['mainToolbar']->insert($tlb_btnnew, -1);
+		$this->widgets['mainToolbar']->insert($tlb_btnnew, -1);
+		$tlb_btnnew->connect("clicked", [$this, "tlbNewClicked"]);
 
 		// Refresh
 		$tlb_btnrefresh = new GtkToolButton("");
 		$tlb_btnrefresh->set_icon_name("view-refresh");
-		$this->widget['mainToolbar']->insert($tlb_btnrefresh, -1);
+		$this->widgets['mainToolbar']->insert($tlb_btnrefresh, -1);
 
 		// SQL
 		$tlb_btnsql = new GtkToolButton("");
 		$tlb_btnsql->set_icon_name("applications-office");
-		$this->widget['mainToolbar']->insert($tlb_btnsql, -1);
+		$this->widgets['mainToolbar']->insert($tlb_btnsql, -1);
 	}
 
 
-	// OLDER
+	/**
+	 *
+	 */
+	public function tlbNewClicked($widget)
+	{
+		$a = new formConnection($this);
+		$response = $a->run();
+		if($response == GtkResponseType::OK) {
+			$name = $a->widgets['name']->get_text();
+			$host = $a->widgets['host']->get_text();
+			$username = $a->widgets['username']->get_text();
+			$password = $a->widgets['password']->get_text();
+			$database = $a->widgets['database']->get_text();
+		}
+
+		$a->destroy();
+	}
+
+
+	/**
+	 *
+	 */
 	public function create_new_tab($label)
 	{
 		$hbox = new GtkHBox();
@@ -209,6 +246,14 @@ class Application
 	 */
 	public function GtkWindowDestroy($widget=NULL, $event=NULL)
 	{
+		// Get panel width
+		$this->config['panel_width'] = $this->widgets['paned']->get_position();
+		$this->config['window_maximized'] = $this->widgets['mainWindow']->is_maximized();
+
+		// Save the config
+		file_put_contents(APPLICATION_PATH . "/config.json", json_encode($this->config));
+		
+
 		Gtk::main_quit();
 	}
 }
