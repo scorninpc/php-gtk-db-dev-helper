@@ -37,8 +37,9 @@ class Application
 		if(!isset($this->config['window_maximized'])) {
 			$this->config['window_maximized'] = TRUE;
 		}
-		if(!isset($this->config['servers_config_path'])) {
+		if((!isset($this->config['servers_config_path'])) || (!file_exists($this->config['servers_config_path']))) {
 			$this->config['servers_config_path'] = APPLICATION_PATH . "/servers.json";
+			touch($this->config['servers_config_path']);
 		}
 
 		// Read the servers
@@ -69,7 +70,7 @@ class Application
 		$this->widgets['paned']->add1($scroll);
 
 		// Model
-		$this->widgets['trvModel'] = new GtkTreeStore(GObject::TYPE_STRING);
+		$this->widgets['trvModel'] = new GtkTreeStore(Gdk::TYPE_PIXBUF, GObject::TYPE_STRING);
 		$this->widgets['trvMain']->set_model($this->widgets['trvModel']);
 
 		// Create notebook
@@ -140,10 +141,10 @@ class Application
 			$path = $model->get_path($iter);
 
 			// Get value of iter selected on model
-			$value = $model->get_value($iter, 0);
+			$value = $model->get_value($iter, 1);
 
 			//
-			var_dump($path);
+			var_dump($this->servers[$path]);
 		}
 	}
 
@@ -355,7 +356,7 @@ class Application
 	public function addServerToList($row)
 	{
 		// Add to the treeview
-		$iter = $this->widgets['trvModel']->append(NULL, [$row['name']]);
+		// $iter = $this->widgets['trvModel']->append(NULL, [NULL, $row['name']]);
 
 		// Save to the global list
 		$this->servers[] = [

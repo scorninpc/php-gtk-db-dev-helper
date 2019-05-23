@@ -30,37 +30,8 @@ class formConfigs extends GtkDialog
 		$hbox->pack_start($this->widgets['servers_config_path'], TRUE, TRUE, 10);
 		$button = GtkButton::new_with_label("...");
 
-		$button->connect('clicked', function($widget, $mainObject) {
-				
-			// Create the file save dialog
-			$dialog = new GtkFileChooserDialog(_t("Save File"), $mainObject->widgets['mainWindow'], GtkFileChooserAction::SAVE, [
-				"Cancel", GtkResponseType::CANCEL,
-				"Ok", GtkResponseType::OK,
-			]);
-
-			// Add the filter
-			$filter = new GtkFileFilter();
-			$filter->set_name("JSON Files");
-			$filter->add_pattern("*.json");
-			$dialog->add_filter($filter);
-
-			// Open the file save dialog
-			$a = $dialog->run();
-			if($a == GtkResponseType::OK) {
-				$filename = $dialog->get_filename();
-				
-				if(substr($filename, strrpos($filename, ".json")) != ".json") {
-					$filename .= ".json";
-				}
-
-				$this->widgets['servers_config_path']->set_text($filename);
-			}
-			$dialog->destroy();
-
-		}, $mainObject);
+		$button->connect('clicked', [$this, "button_open_connection"], $mainObject);
 		$hbox->pack_start($button, FALSE, FALSE, 10);
-
-
 
 		// Add vbox
 		$area = parent::get_content_area();
@@ -68,5 +39,33 @@ class formConfigs extends GtkDialog
 
 		// Show all
 		$area->show_all();
+	}
+
+	public function button_open_connection($widget, $mainObject)
+	{
+		// Create the file save dialog
+		$dialog = new GtkFileChooserDialog(_t("Save File"), $mainObject->widgets['mainWindow'], GtkFileChooserAction::SAVE, [
+			"Cancel", GtkResponseType::CANCEL,
+			"Ok", GtkResponseType::OK,
+		]);
+
+		// Add the filter
+		$filter = new GtkFileFilter();
+		$filter->set_name("JSON Files");
+		$filter->add_pattern("*.json");
+		$dialog->add_filter($filter);
+
+		// Open the file save dialog
+		$a = $dialog->run();
+		if($a == GtkResponseType::OK) {
+			$filename = $dialog->get_filename();
+			
+			if(substr($filename, strrpos($filename, ".json")) != ".json") {
+				$filename .= ".json";
+			}
+
+			$this->widgets['servers_config_path']->set_text($filename);
+		}
+		$dialog->destroy();
 	}
 }
