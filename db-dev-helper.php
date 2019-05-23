@@ -9,12 +9,20 @@ $lang = "ptbr";
 
 require_once("langs.php");
 require_once("formConnection.php");
+require_once("formConfigs.php");
 
 /**
  * Application class
  */
 class Application
 {
+	public $config;
+	public $widgets;
+	public $servers;
+
+	const DISCONNECTED = 0;
+	const CONNECTED = 1;
+
 	/**
 	 * Construtor
 	 */
@@ -29,6 +37,12 @@ class Application
 		if(!isset($this->config['window_maximized'])) {
 			$this->config['window_maximized'] = TRUE;
 		}
+		if(!isset($this->config['servers_config_path'])) {
+			$this->config['servers_config_path'] = APPLICATION_PATH . "/servers.json";
+		}
+
+		// Read the servers
+		$this->servers = json_decode(file_get_contents($this->config['servers_config_path']), TRUE);
 
 		// Create toolbar
 		$this->IToolbar();
@@ -39,23 +53,24 @@ class Application
 		// $this->widgets['paned']->set_position(120);
 
 		// Treeview
-		$tree = new GtkTreeView();
+		$this->widgets['trvMain'] = new GtkTreeView();
 			$renderer = new GtkCellRendererText();
 			$column = new GtkTreeViewColumn("", $renderer, "text", 0);
-			$tree->append_column($column);
+			$this->widgets['trvMain']->append_column($column);
+		$this->widgets['trvMain']->connect("button-press-event", [$this, "trvMain_buttonPress"]);
 		
-		$model = new GtkListStore(GObject::TYPE_STRING);
-		$model->append(["line 1"]); $model->append(["line 2"]); $model->append(["line 3"]);
-		$model->append(["line 1"]); $model->append(["line 2"]); $model->append(["line 3"]);
-		$model->append(["line 1"]); $model->append(["line 2"]); $model->append(["line 3"]);
-		$model->append(["line 1"]); $model->append(["line 2"]); $model->append(["line 3"]);
-		$model->append(["line 1"]); $model->append(["line 2"]); $model->append(["line 3"]);
-		$tree->set_model($model);
+
+		$selection = $this->widgets['trvMain']->get_selection();
+
 
 		$scroll = new GtkScrolledWindow();
-		$scroll->add($tree);
+		$scroll->add($this->widgets['trvMain']);
 		$scroll->set_policy(GtkPolicyType::AUTOMATIC, GtkPolicyType::AUTOMATIC);
 		$this->widgets['paned']->add1($scroll);
+
+		// Model
+		$this->widgets['trvModel'] = new GtkTreeStore(GObject::TYPE_STRING);
+		$this->widgets['trvMain']->set_model($this->widgets['trvModel']);
 
 		// Create notebook
 		$this->ntb = new GtkNotebook();
@@ -86,6 +101,13 @@ class Application
 
 		// $this->widgets['mainWindow']->set_interactive_debugging(TRUE);
 
+		// Read server list and add to treeviews
+		$servers = $this->servers;
+		$this->servers = [];
+		foreach($servers as $server) {
+			$this->addServerToList($server);
+		}
+
 		// Show all
 		if($this->config['window_maximized']) {
 			$this->widgets['mainWindow']->maximize();
@@ -104,6 +126,25 @@ class Application
 		$dialog->format_secondary_markup("<i>" . _t("Use carefully, and please let us know about problems in our community at") . " <a href=\"https://github.com/scorninpc/php-gtk3\">Github</a>.</i>");
 		// $dialog->run();
 		// $dialog->destroy();
+	}
+
+	public function trvMain_buttonPress($widget, $event)
+	{
+		if($event->type == Gdk::_2BUTTON_PRESS) {
+			// Get the model of treeview
+			$model = $widget->get_model();
+
+			// Return the selection and the iter of selected
+			$selection = $widget->get_selection();
+			$iter = $selection->get_selected($model);
+			$path = $model->get_path($iter);
+
+			// Get value of iter selected on model
+			$value = $model->get_value($iter, 0);
+
+			//
+			var_dump($path);
+		}
 	}
 
 	/**
@@ -129,6 +170,32 @@ class Application
 		$tlb_btnsql = new GtkToolButton("");
 		$tlb_btnsql->set_icon_name("applications-office");
 		$this->widgets['mainToolbar']->insert($tlb_btnsql, -1);
+
+		// Config
+		$tlb_btnconfig = new GtkToolButton("");
+		$tlb_btnconfig->set_icon_name("emblem-system");
+		$this->widgets['mainToolbar']->insert($tlb_btnconfig, -1);
+		$tlb_btnconfig->connect("clicked", [$this, "tlbConfigClicked"]);
+	}
+
+	/**
+	 *
+	 */
+	public function tlbConfigClicked($widget)
+	{
+		$a = new formConfigs($this);
+
+		// Set the configs before open
+		$a->widgets['servers_config_path']->set_text($this->config['servers_config_path']);
+
+		// Run dialog
+		$response = $a->run();
+		if($response == GtkResponseType::OK) {
+			$name = $a->widgets['servers_config_path']->get_text();
+			$this->config['servers_config_path'] = $name;
+		}
+
+		$a->destroy();
 	}
 
 
@@ -145,6 +212,24 @@ class Application
 			$username = $a->widgets['username']->get_text();
 			$password = $a->widgets['password']->get_text();
 			$database = $a->widgets['database']->get_text();
+
+			// Add the server to the treeview
+			$this->addServerToList([
+				'name' => $name,
+				'host' => $host,
+				'username' => $username,
+				'password' => $password,
+				'database' => $database,
+			]);
+
+			// Add the server for server list file
+			$this->server[] = [
+				'name' => $name,
+				'host' => $host,
+				'username' => $username,
+				'password' => $password,
+				'database' => $database,
+			];
 		}
 
 		$a->destroy();
@@ -252,10 +337,38 @@ class Application
 
 		// Save the config
 		file_put_contents(APPLICATION_PATH . "/config.json", json_encode($this->config));
-		
+
+		// Save the server list
+		$servers = $this->servers;
+		foreach($servers as $index => $server) {
+			unset($servers[$index]['trvIter']);
+			unset($servers[$index]['state']);
+		}
+		file_put_contents($this->config['servers_config_path'], json_encode($servers));
 
 		Gtk::main_quit();
 	}
+
+	/**
+	 *
+	 */
+	public function addServerToList($row)
+	{
+		// Add to the treeview
+		$iter = $this->widgets['trvModel']->append(NULL, [$row['name']]);
+
+		// Save to the global list
+		$this->servers[] = [
+			'name' => $row['name'],
+			'host' => $row['host'],
+			'username' => $row['username'],
+			'password' => $row['password'],
+			'database' => $row['database'],
+			'trvIter' => $iter,
+			'state' => self::DISCONNECTED,
+		];
+	}
+
 }
 
 // Start application

@@ -8,6 +8,7 @@ class formConnection extends GtkDialog
 	public function __construct($mainObject) 
 	{
 		parent::__construct();
+		parent::set_title(_t("New server"));
 		parent::set_transient_for($mainObject->widgets['mainWindow']);
 		parent::set_size_request(400, 280);
 

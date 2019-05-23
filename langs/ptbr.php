@@ -6,4 +6,8 @@ return [
 	'connect' => "connectar",
 	'Cancel' => "Cancelar",
 	'Save' => "Salvar",
+	'Server Config Path' => "Caminho da configuração dos servidores",
+	'Save File' => "Salvar Arquivo",
+	'Settings' => "Configurações",
+	'New server' => "Novo servidor",
 ];
