@@ -10,6 +10,7 @@ $lang = "ptbr";
 require_once("langs.php");
 require_once("formConnection.php");
 require_once("formConfigs.php");
+require_once("DatabaseHelper.php");
 
 /**
  * Application class
@@ -55,8 +56,12 @@ class Application
 
 		// Treeview
 		$this->widgets['trvMain'] = new GtkTreeView();
+			$renderer = new GtkCellRendererPixbuf();
+			$column = new GtkTreeViewColumn("", $renderer, "pixbuf", 0);
+			$this->widgets['trvMain']->append_column($column);
+
 			$renderer = new GtkCellRendererText();
-			$column = new GtkTreeViewColumn("", $renderer, "text", 0);
+			$column = new GtkTreeViewColumn("", $renderer, "text", 1);
 			$this->widgets['trvMain']->append_column($column);
 		$this->widgets['trvMain']->connect("button-press-event", [$this, "trvMain_buttonPress"]);
 		
@@ -70,7 +75,7 @@ class Application
 		$this->widgets['paned']->add1($scroll);
 
 		// Model
-		$this->widgets['trvModel'] = new GtkTreeStore(Gdk::TYPE_PIXBUF, GObject::TYPE_STRING);
+		$this->widgets['trvModel'] = new GtkTreeStore(GObject::TYPE_OBJECT, GObject::TYPE_STRING);
 		$this->widgets['trvMain']->set_model($this->widgets['trvModel']);
 
 		// Create notebook
@@ -140,11 +145,105 @@ class Application
 			$iter = $selection->get_selected($model);
 			$path = $model->get_path($iter);
 
-			// Get value of iter selected on model
-			$value = $model->get_value($iter, 1);
+			// Explode to get location of clicked
+			$paths = explode(":", $path);
 
 			//
-			var_dump($this->servers[$path]);
+			$host = $this->servers[$paths[0]]['host'];
+			$username = $this->servers[$paths[0]]['username'];
+			$password = $this->servers[$paths[0]]['password'];
+
+			// Clicked on server
+			if(count($paths) == 1) {
+				// Verify connection
+				if($this->servers[$path]['state'] == self::CONNECTED) {
+					return FALSE;
+				}
+
+				// database
+				$database = $this->servers[$path]['database'];
+
+				// Connect to database
+				$dsn = "pgsql:host=$host;port=5432;dbname=$database;user=$username;password=$password";
+				try {
+					$conn = new PDO($dsn);
+					if(!$conn) {
+						// Not connected
+						$dialog = GtkMessageDialog::new_with_markup($this->widgets['mainWindow'], GtkDialogFlags::MODAL, GtkMessageType::ERROR, GtkButtonsType::OK, _t("Cloud not connect to server"));
+						$a = $dialog->run();
+						$dialog->destroy();
+					}
+					else {
+						// Set new icon
+						$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/server2.png", 14, -1);
+						$this->widgets['trvModel']->set_value($this->servers[$path]['trvIter'], 0, $pixbuf);
+						$this->servers[$path]['state'] = self::CONNECTED;
+
+						// Connected
+						$this->servers[$path]['connection'] = $conn;
+
+						// Get all tables
+						$databases = DatabaseHelper::getAllDatabases($this->servers[$path]['connection']);
+						foreach($databases as $index => $database) {
+							// Add database to list
+							$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/table.png", 14, -1);
+							$iter = $this->widgets['trvModel']->append($this->servers[$path]['trvIter'], [$pixbuf, $database]);
+
+							$this->servers[$path]['databases'][$index] = [
+								'name' => $database,
+								'trvIter'  => $iter,
+								'state' => self::DISCONNECTED
+							];
+						}
+
+
+					}
+				}
+				catch (PDOException $e) {
+					// Show dialog
+					$dialog = GtkMessageDialog::new_with_markup($this->widgets['mainWindow'], GtkDialogFlags::MODAL, GtkMessageType::ERROR, GtkButtonsType::OK, $e->getMessage());
+					$a = $dialog->run();
+					$dialog->destroy();
+				}
+			}
+
+			// Clicked on database
+			else if(count($paths) == 2) {
+				$database = $this->servers[$paths[0]]['databases'][$paths[1]];
+				$dbname = $database['name'];
+
+				// Connect to database
+				$dsn = "pgsql:host=$host;port=5432;dbname=$dbname;user=$username;password=$password";
+				
+				try {
+					$conn = new PDO($dsn);
+					if(!$conn) {
+						// Not connected
+						$dialog = GtkMessageDialog::new_with_markup($this->widgets['mainWindow'], GtkDialogFlags::MODAL, GtkMessageType::ERROR, GtkButtonsType::OK, _t("Cloud not connect to database"));
+						$a = $dialog->run();
+						$dialog->destroy();
+					}
+					else {
+						// Set new icon
+						$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/table2.png", 14, -1);
+						$this->widgets['trvModel']->set_value($database['trvIter'], 0, $pixbuf);
+						$this->servers[$paths[0]]['databases'][$paths[1]]['state'] = self::CONNECTED;
+
+						// Connected
+						$this->servers[$paths[0]]['databases'][$paths[1]]['connection'] = $conn;
+						$schemas = DatabaseHelper::getAllShemas($this->servers[$paths[0]]['databases'][$paths[1]]['connection']);
+
+						var_dump($schemas);
+
+					}
+				}
+				catch (PDOException $e) {
+					// Show dialog
+					$dialog = GtkMessageDialog::new_with_markup($this->widgets['mainWindow'], GtkDialogFlags::MODAL, GtkMessageType::ERROR, GtkButtonsType::OK, $e->getMessage());
+					$a = $dialog->run();
+					$dialog->destroy();
+				}
+			}
 		}
 	}
 
@@ -344,6 +443,8 @@ class Application
 		foreach($servers as $index => $server) {
 			unset($servers[$index]['trvIter']);
 			unset($servers[$index]['state']);
+			unset($servers[$index]['connection']);
+			unset($servers[$index]['databases']);
 		}
 		file_put_contents($this->config['servers_config_path'], json_encode($servers));
 
@@ -355,8 +456,10 @@ class Application
 	 */
 	public function addServerToList($row)
 	{
+		$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/server1.png", 14, -1);
+
 		// Add to the treeview
-		// $iter = $this->widgets['trvModel']->append(NULL, [NULL, $row['name']]);
+		$iter = $this->widgets['trvModel']->append(NULL, [$pixbuf, $row['name']]);
 
 		// Save to the global list
 		$this->servers[] = [

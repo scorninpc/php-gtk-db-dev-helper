@@ -10,4 +10,5 @@ return [
 	'Save File' => "Salvar Arquivo",
 	'Settings' => "Configurações",
 	'New server' => "Novo servidor",
+	'Cloud not connect to database' => "Não foi possivel conectar ao banco de dados"
 ];
