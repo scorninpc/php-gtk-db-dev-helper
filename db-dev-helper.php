@@ -77,6 +77,9 @@ class Application
 		// Model
 		$this->widgets['trvModel'] = new GtkTreeStore(GObject::TYPE_OBJECT, GObject::TYPE_STRING);
 		$this->widgets['trvMain']->set_model($this->widgets['trvModel']);
+		$this->widgets['trvMain']->set_level_indentation(15);
+		$this->widgets['trvMain']->set_show_expanders(FALSE);
+		$this->widgets['trvMain']->set_enable_tree_lines(TRUE);
 
 		// Create notebook
 		$this->ntb = new GtkNotebook();
@@ -157,6 +160,14 @@ class Application
 			if(count($paths) == 1) {
 				// Verify connection
 				if($this->servers[$path]['state'] == self::CONNECTED) {
+
+					if($this->widgets['trvMain']->row_expanded($path)) {
+						$this->widgets['trvMain']->collapse_row($path);
+					}
+					else {
+						$this->widgets['trvMain']->expand_row($path);
+					}
+
 					return FALSE;
 				}
 
@@ -186,7 +197,7 @@ class Application
 						$databases = DatabaseHelper::getAllDatabases($this->servers[$path]['connection']);
 						foreach($databases as $index => $database) {
 							// Add database to list
-							$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/table.png", 14, -1);
+							$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/database.png", 14, -1);
 							$iter = $this->widgets['trvModel']->append($this->servers[$path]['trvIter'], [$pixbuf, $database]);
 
 							$this->servers[$path]['databases'][$index] = [
@@ -196,6 +207,8 @@ class Application
 							];
 						}
 
+						// Expand
+						$this->widgets['trvMain']->expand_row($path);
 
 					}
 				}
@@ -212,6 +225,18 @@ class Application
 				$database = $this->servers[$paths[0]]['databases'][$paths[1]];
 				$dbname = $database['name'];
 
+				if($this->servers[$paths[0]]['databases'][$paths[1]]['state'] == self::CONNECTED) {
+
+					if($this->widgets['trvMain']->row_expanded($path)) {
+						$this->widgets['trvMain']->collapse_row($path);
+					}
+					else {
+						$this->widgets['trvMain']->expand_row($path);
+					}
+
+					return FALSE;
+				}
+
 				// Connect to database
 				$dsn = "pgsql:host=$host;port=5432;dbname=$dbname;user=$username;password=$password";
 				
@@ -225,15 +250,30 @@ class Application
 					}
 					else {
 						// Set new icon
-						$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/table2.png", 14, -1);
+						$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/database1.png", 14, -1);
 						$this->widgets['trvModel']->set_value($database['trvIter'], 0, $pixbuf);
 						$this->servers[$paths[0]]['databases'][$paths[1]]['state'] = self::CONNECTED;
 
 						// Connected
 						$this->servers[$paths[0]]['databases'][$paths[1]]['connection'] = $conn;
-						$schemas = DatabaseHelper::getAllShemas($this->servers[$paths[0]]['databases'][$paths[1]]['connection']);
+						$schemas = DatabaseHelper::getAllShemas($conn);
 
-						var_dump($schemas);
+						foreach($schemas as $index => $schema) {
+							// Add schema to list
+							$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/table4.png", 14, -1);
+							$iter = $this->widgets['trvModel']->append($database['trvIter'], [$pixbuf, $schema]);
+
+							// Get tables of schema
+							$tables = DatabaseHelper::getAllTables($conn, $schema);
+							foreach($tables as $table) {
+								// Add schema to list
+								$pixbuf = GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/icons/table1.png", 14, -1);
+								$this->widgets['trvModel']->append($iter, [$pixbuf, $table]);
+							}
+						}
+
+						// Expand
+						$this->widgets['trvMain']->expand_row($path, FALSE);
 
 					}
 				}
@@ -243,6 +283,18 @@ class Application
 					$a = $dialog->run();
 					$dialog->destroy();
 				}
+			}
+
+			// Clicked on schema
+			else if(count($paths) == 3) {
+
+				if($this->widgets['trvMain']->row_expanded($path)) {
+					$this->widgets['trvMain']->collapse_row($path);
+				}
+				else {
+					$this->widgets['trvMain']->expand_row($path);
+				}
+
 			}
 		}
 	}
@@ -434,6 +486,12 @@ class Application
 		// Get panel width
 		$this->config['panel_width'] = $this->widgets['paned']->get_position();
 		$this->config['window_maximized'] = $this->widgets['mainWindow']->is_maximized();
+
+		list($width, $height) = $a = $this->widgets['mainWindow']->get_size();
+		$this->config['window_width'] = $width;
+		$this->config['window_height'] = $height;
+
+		var_dump($a);
 
 		// Save the config
 		file_put_contents(APPLICATION_PATH . "/config.json", json_encode($this->config));
