@@ -64,6 +64,7 @@ class Application
 			$column = new GtkTreeViewColumn("", $renderer, "text", 1);
 			$this->widgets['trvMain']->append_column($column);
 		$this->widgets['trvMain']->connect("button-press-event", [$this, "trvMain_buttonPress"]);
+		$this->widgets['trvMain']->connect("button-release-event", [$this, "trvMain_buttonRelease"]);
 		
 
 		$selection = $this->widgets['trvMain']->get_selection();
@@ -86,12 +87,6 @@ class Application
 		$this->ntb->set_tab_pos(GtkPositionType::TOP);
 		$this->widgets['paned']->add2($this->ntb);
 
-		
-		$this->create_new_tab("GtkLabel.cpp");
-		$this->create_new_tab("GtkLabel.h");
-		$this->create_new_tab("main.cpp");
-		$this->create_new_tab("main.h");
-
 		// VBox
 		$main_box = new GtkVBox();
 		$main_box->pack_start($this->widgets['mainToolbar'], FALSE, FALSE);
@@ -101,13 +96,35 @@ class Application
 
 		// Create window
 		$this->widgets['mainWindow'] = new GtkWindow();
-		$this->widgets['mainWindow']->set_default_size(800, 600);
 		$this->widgets['mainWindow']->add($main_box);
 		$this->widgets['mainWindow']->set_title("DB Dev Helper :: PHP-GTK3");
 
-		// Connects
-		$this->widgets['mainWindow']->connect("destroy", [$this, "GtkWindowDestroy"]);
+		// Set sizes
+		$width = 800;
+		if($this->config['window_width'] > 0) {
+			$width = $this->config['window_width'];
+		}
+		$height = 600;
+		if($this->config['window_height'] > 0) {
+			$height = $this->config['window_height'];
+		}
+		$this->widgets['mainWindow']->set_default_size($width, $height);
 
+		// Set position
+		$top = -1;
+		if($this->config['window_top'] > 0) {
+			$top = $this->config['window_top'];
+		}
+		$left = -1;
+		if($this->config['window_left'] > 0) {
+			$left = $this->config['window_left'];
+		}
+		$this->widgets['mainWindow']->move($top, $left);
+
+		
+
+		// Connects
+		$this->widgets['mainWindow']->connect("delete-event", [$this, "GtkWindowDestroy"]);
 		// $this->widgets['mainWindow']->set_interactive_debugging(TRUE);
 
 		// Read server list and add to treeviews
@@ -135,7 +152,112 @@ class Application
 		$dialog->format_secondary_markup("<i>" . _t("Use carefully, and please let us know about problems in our community at") . " <a href=\"https://github.com/scorninpc/php-gtk3\">Github</a>.</i>");
 		// $dialog->run();
 		// $dialog->destroy();
+
+
+
+
+		$this->widgets['trvMainPopupMain'] = [
+			'widget' => new GtkMenu(),
+			'itens' => [
+				'connectServer' => GtkMenuItem::new_with_label(_t("Connect to server")),
+				'disconnectServer' => GtkMenuItem::new_with_label(_t("Disconnect to server")),
+				'configureServer' => GtkMenuItem::new_with_label(_t("Configure server")),
+				'newServer' => GtkMenuItem::new_with_label(_t("New server")),
+				'deleteServer' => GtkMenuItem::new_with_label(_t("Delete server")),
+			]
+		];
+
+		$this->widgets['trvMainPopupMain']['widget']->append($this->widgets['trvMainPopupMain']['itens']['connectServer']);
+		$this->widgets['trvMainPopupMain']['widget']->append($this->widgets['trvMainPopupMain']['itens']['disconnectServer']);
+		$this->widgets['trvMainPopupMain']['widget']->append($this->widgets['trvMainPopupMain']['itens']['configureServer']);
+		$this->widgets['trvMainPopupMain']['widget']->append(new GtkSeparatorMenuItem());
+		$this->widgets['trvMainPopupMain']['widget']->append($this->widgets['trvMainPopupMain']['itens']['newServer']);
+		$this->widgets['trvMainPopupMain']['widget']->append($this->widgets['trvMainPopupMain']['itens']['deleteServer']);
+		$this->widgets['trvMainPopupMain']['widget']->append(new GtkSeparatorMenuItem());
+		$this->widgets['trvMainPopupMain']['widget']->show_all();
+
+		$this->widgets['trvMainPopupMain']['itens']['newServer']->connect('activate', [$this, "tlbNewClicked"]);
+		$this->widgets['trvMainPopupMain']['itens']['deleteServer']->connect('activate', function($widget) {
+			// Get the model of treeview
+			$model = $this->widgets['trvModel'];
+
+			// Return the selection and the iter of selected
+			$selection = $this->widgets['trvMain']->get_selection();
+			$iter = $selection->get_selected($model);
+			$path = $model->get_path($iter);
+
+			// Remove server from list and treeview
+			$model->remove($iter);
+
+			// Reorder server
+			foreach($this->servers as $index => $server) {
+				if($index > $path) {
+					$this->servers[$index-1] = $this->servers[$index];
+				}
+			}
+			unset($this->servers[$index]);
+
+		});
+
+
+
+
 	}
+
+	public function trvMain_buttonRelease($widget, $event)
+	{
+		if($event->button->button == 3) {
+			// Get the model of treeview
+			$model = $widget->get_model();
+
+			// Return the selection and the iter of selected
+			$selection = $widget->get_selection();
+			$iter = $selection->get_selected($model);
+			$path = $model->get_path($iter);
+
+			// Explode to get location of clicked
+			$paths = explode(":", $path);
+
+			// Clicked on server
+			if(count($paths) == 1) {
+
+				// Hide all non-server itens
+
+				// Show server itens
+				$this->widgets['trvMainPopupMain']['itens']['connectServer']->set_visible(TRUE);
+				$this->widgets['trvMainPopupMain']['itens']['disconnectServer']->set_visible(TRUE);
+				$this->widgets['trvMainPopupMain']['itens']['configureServer']->set_visible(TRUE);
+				$this->widgets['trvMainPopupMain']['itens']['deleteServer']->set_visible(TRUE);
+
+				// Verify if selected are connected
+				if($this->servers[$path]['state'] == self::CONNECTED) {
+					$this->widgets['trvMainPopupMain']['itens']['connectServer']->set_visible(FALSE);
+					$this->widgets['trvMainPopupMain']['itens']['disconnectServer']->set_visible(TRUE);
+				}
+				else {
+					$this->widgets['trvMainPopupMain']['itens']['connectServer']->set_visible(TRUE);
+					$this->widgets['trvMainPopupMain']['itens']['disconnectServer']->set_visible(FALSE);
+				}
+
+			}
+
+			// Click on database
+			else if(count($paths) == 2) {
+				// Show server itens
+				$this->widgets['trvMainPopupMain']['itens']['connectServer']->set_visible(FALSE);
+				$this->widgets['trvMainPopupMain']['itens']['disconnectServer']->set_visible(FALSE);
+				$this->widgets['trvMainPopupMain']['itens']['configureServer']->set_visible(FALSE);
+				$this->widgets['trvMainPopupMain']['itens']['deleteServer']->set_visible(FALSE);
+
+			}
+
+
+
+			// Popup
+			$this->widgets['trvMainPopupMain']['widget']->popup_at_pointer($event);
+		}
+	}
+
 
 	public function trvMain_buttonPress($widget, $event)
 	{
@@ -322,12 +444,44 @@ class Application
 		$tlb_btnsql = new GtkToolButton("");
 		$tlb_btnsql->set_icon_name("applications-office");
 		$this->widgets['mainToolbar']->insert($tlb_btnsql, -1);
+		$tlb_btnsql->connect("clicked", [$this, "tlbSqlClicked"]);
+
+		$a = new GtkSeparatorToolItem();
+		// $a->set_expand(TRUE);
+		$this->widgets['mainToolbar']->insert($a, -1);
+
 
 		// Config
 		$tlb_btnconfig = new GtkToolButton("");
 		$tlb_btnconfig->set_icon_name("emblem-system");
 		$this->widgets['mainToolbar']->insert($tlb_btnconfig, -1);
 		$tlb_btnconfig->connect("clicked", [$this, "tlbConfigClicked"]);
+	}
+
+	/**
+	 *
+	 */
+	public function tlbSqlClicked($widget)
+	{
+		// Get the model of treeview
+		$model = $this->widgets['trvModel'];
+
+		// Return the selection and the iter of selected
+		$selection = $this->widgets['trvMain']->get_selection();
+		$iter = $selection->get_selected($model);
+		$path = $model->get_path($iter);
+		$database_name = "DATABASE";
+
+		// 
+		$hbox = new GtkHBox();
+		$hbox->set_margin_start(5);
+		$hbox->set_margin_end(5);
+
+		$button_close = GtkButton::new_from_icon_name("gtk-close");
+		$button_close->set_size_request(5, 5);
+		$label = new GtkLabel($database_name);
+		$hbox->pack_start($label, TRUE, TRUE, 10);
+		$hbox->pack_start($button_close, FALSE, FALSE);
 	}
 
 	/**
@@ -387,89 +541,6 @@ class Application
 		$a->destroy();
 	}
 
-
-	/**
-	 *
-	 */
-	public function create_new_tab($label)
-	{
-		$hbox = new GtkHBox();
-		$hbox->set_margin_start(5);
-		$hbox->set_margin_end(5);
-
-		$button_close = GtkButton::new_from_icon_name("gtk-close");
-		$button_close->set_size_request(5, 5);
-		$label = new GtkLabel($label);
-		$hbox->pack_start($label, TRUE, TRUE, 10);
-		// $hbox->pack_start($button_close, FALSE, FALSE);
-
-		$text = new GtkTextView();
-		$scroll = new GtkScrolledWindow();
-		$scroll->add($text);
-		$scroll->set_policy(GtkPolicyType::AUTOMATIC, GtkPolicyType::AUTOMATIC);
-
-		$this->ntb->insert_page($scroll, $hbox);
-
-		$button_close->connect("clicked", function() {
-
-			// $dialog = GtkDialog::new_with_buttons("Titulo", $this->widgets['mainWindow'], GtkDialogFlags::MODAL);
-			// $dialog->set_transient_for($this->widgets['mainWindow']);
-			// $box = $dialog->get_content_area();
-			// var_dump($box);
-			// $h = new GtkHBox(30);
-			// $h->set_margin_start(20);
-			// $h->set_margin_end(20);
-			// $h->set_margin_top(20);
-			// $h->set_margin_bottom(20);
-			// $h->pack_start(new GtkLabel("My dialog message, taokay?"), TRUE, TRUE, 30);
-			// $box->pack_end($h, TRUE, TRUE, 30);
-			// $box->show_all();
-
-			// $a = $dialog->run();
-			// if($a == GtkResponseType::OK) {
-			// 	var_dump("OK");
-			// }
-			// else {
-			// 	var_dump("ERRO");
-			// }
-			// $dialog->destroy();
-
-			$filter = new GtkFileFilter();
-			$filter->set_name("PHP Files");
-			$filter->add_pattern("*.php");
-
-			// File chooser
-			$dialog = new GtkFileChooserDialog("Open file", $this->widgets['mainWindow'], GtkFileChooserAction::OPEN, [
-				"Cancel", GtkResponseType::CANCEL,
-				"Ok", GtkResponseType::OK,
-			]);
-
-			$filter = new GtkFileFilter();
-			$filter->set_name("PHP Files");
-			$filter->add_pattern("*.php");
-			$dialog->add_filter($filter);
-
-			$filter = new GtkFileFilter();
-			$filter->set_name("HTML Files");
-			$filter->add_pattern("*.html");
-			$filter->add_pattern("*.tpl");
-			$dialog->add_filter($filter);
-
-
-			$dialog->set_select_multiple(FALSE);
-			$a = $dialog->run();
-			if($a == GtkResponseType::OK) {
-				var_dump($dialog->get_filename());
-			}
-			$dialog->destroy();
-
-		});
-
-		$button_close->connect("clicked", [$this, "close_tab"], $hbox);
-
-		$hbox->show_all();
-	}
-
 	public function close_tab($widget=NULL, $event=NULL, $child=NULL)
 	{
 		// $this->ntb->remove_page($page_num);
@@ -487,11 +558,14 @@ class Application
 		$this->config['panel_width'] = $this->widgets['paned']->get_position();
 		$this->config['window_maximized'] = $this->widgets['mainWindow']->is_maximized();
 
-		list($width, $height) = $a = $this->widgets['mainWindow']->get_size();
+		list($width, $height) = $this->widgets['mainWindow']->get_size();
 		$this->config['window_width'] = $width;
 		$this->config['window_height'] = $height;
 
-		var_dump($a);
+		list($top, $left) = $this->widgets['mainWindow']->get_position();
+		$this->config['window_top'] = $top;
+		$this->config['window_left'] = $left;
+
 
 		// Save the config
 		file_put_contents(APPLICATION_PATH . "/config.json", json_encode($this->config));
