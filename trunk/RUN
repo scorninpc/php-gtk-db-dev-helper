@@ -1,0 +1,31 @@
+- dbHelper.php (bootstrap of project, file to call to start)
+
+- resources/config.php
+	application/namespace (name of namespace of project)
+	application/start_form (first controller to call)
+
+- Controller/nameController.php
+	create View/nameView.php
+	call nameController::beforeShow()
+	call nameView::showInterface()
+	call nameController::afterShow()
+
+- View/nameView.php
+	call nameView::beforeInterfaceCreate()
+	call nameView::createInterface()
+	call nameview::afterInterfaceCreate()
+
+- View/Interfaces/nameView.interface.php
+
+
+- ALL PROCESSES
+	. Run Project.php
+	. FW will look the start config on resources/config.php key application/start_form for the nameController
+	. FW will create nameController 
+	. Controller/nameController will create View/nameView
+	. View/nameView will call beforeInterfaceCreate()
+	. View/nameView will call createInterface(), this is perfect time to create the interface
+	. View/nameView will call afterInterfaceCreate()
+	. Controller/nameController will call beforeShow()
+	. Controller/nameController will call View/nameView::showInterface()
+	. Controller/nameController will call afterShow()
