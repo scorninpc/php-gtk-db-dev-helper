@@ -67,8 +67,8 @@ class startView extends \Fabula\Mvc\View
 		$scroll->set_policy(\GtkPolicyType::AUTOMATIC, \GtkPolicyType::AUTOMATIC);
 		$this->paned->add1($scroll);
 		
-		// Model
-		$this->trvModel = new \GtkTreeStore(\GObject::TYPE_OBJECT, \GObject::TYPE_STRING);
+		// Model (icon, name, controller [1-servers, 2-schemas, 3-tables, 4-columns])
+		$this->trvModel = new \GtkTreeStore(\GObject::TYPE_OBJECT, \GObject::TYPE_STRING, \GObject::TYPE_INT);
 		$this->trvMain->set_model($this->trvModel);
 		$this->trvMain->set_level_indentation(15);
 		$this->trvMain->set_show_expanders(FALSE);
@@ -101,6 +101,9 @@ class startView extends \Fabula\Mvc\View
 		// Treeview 
 		$this->trvMain->connect("button-press-event", [$this->getController(), "trvMain_buttonPress"]);
 		$this->trvMain->connect("button-release-event", [$this->getController(), "trvMain_buttonRelease"]);
+
+		// Toolbar
+		$this->mainToolbar->get_nth_item(0)->connect('clicked', [$this->getController(), "mainToolbar_activate"]);
 
 		// Window
 		$this->startForm->connect("destroy", [$this->getController(), "startForm_onDestroy"]); 
