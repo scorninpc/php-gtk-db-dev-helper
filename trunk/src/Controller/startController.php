@@ -11,6 +11,8 @@ class startController extends \Fabula\Mvc\Controller
 
 	protected $servers = [];
 
+	protected $connects = [];
+
 	/**
 	 * Executa antes de mostrar a tela
 	 */
@@ -157,21 +159,33 @@ class startController extends \Fabula\Mvc\Controller
 		$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/server1.png", 14, -1);
 
 		// Add to the treeview
-		$iter = $this->getView()->trvModel->append(NULL, [$pixbuf, $server['name'], 1]); // 1 for servers controller
+		$this->getView()->trvModel->append(NULL, [$pixbuf, $server['name'], 1]); // 1 for servers controller
 	}
 
 	/**
-	 * Add database to a treeview
+	 *
 	 */
-	public function addDatabaseToTreeview($database, $iter)
+	public function connectToDatabase($path, $host, $username, $password, $database, $iter=NULL)
 	{
-		var_dump($database);
+		// Verify if can connect and if not, show dialog
+		try {
+			$this->connects[$path][$database] = new \dbHelper\Helpers\Database($host, $database, $username, $password);
+		}
+		catch(\Exception $e) {
+			// Not connected
+			$dialog = \GtkMessageDialog::new_with_markup($this->widgets['mainWindow'], \GtkDialogFlags::MODAL, \GtkMessageType::ERROR, \GtkButtonsType::OK, $e->getMessage());
+			$a = $dialog->run();
+			$dialog->destroy();
 
-		// Create the pixbub
-		$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database.png", 14, -1);
+			return false;
+		}
 
-		// Add to the treeview
-		$iter = $this->getView()->trvModel->append($iter, [$pixbuf, $database, 2]); // 2 for database controller
+		// Change database connected icon
+		$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database1.png", 14, -1);
+		$this->getView()->trvModel->set_value($iter, 0, $pixbuf);
+
+
+		return true;
 	}
 
 	/**
@@ -185,32 +199,60 @@ class startController extends \Fabula\Mvc\Controller
 			// Expand or collapse row
 			if($this->getView()->trvMain->row_expanded($path))
 				$this->getView()->trvMain->collapse_row($path);
-			else
+			else {
 				$this->getView()->trvMain->expand_row($path);
+			}
 
 			return false;
 		}
 
-		// Create the connection - Abstract for new types
+		// Create the connection
 		$host = $this->servers[$path]['host'];
 		$username = $this->servers[$path]['username'];
 		$password = $this->servers[$path]['password'];
 		$database = $this->servers[$path]['database'];
-		$dsn = "pgsql:host=$host;port=5432;dbname=$database;user=$username;password=$password";
-		$this->servers[$path]['connection'] = new \PDO($dsn); // Verify if can connect and if not, show dialog
+		$test = $this->connectToDatabase($path, $host, $username, $password, $database, $iter);
+		if(!$test) {
+			return false;
+		}
 
 		// Retreave databases
-		$databases = getAllDatabases($this->servers[$path]['connection']);
-		foreach($databases as $database) {
-			$this->addDatabaseToTreeview($database, $iter);
+		$databases = $this->connects[$path][$database]->getDatabases();
+
+		// Add to treeview
+		foreach($databases as $row) {
+			// Create the pixbub
+			$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database.png", 14, -1);
+			$atual_iter = $model->append($iter, [$pixbuf, $row, 2]); // 2 for database controller
+
+			// Save the atual iter of database
+			if($row == $database) {
+				$current_iter = $atual_iter;
+			}
 		}
 		$this->getView()->trvMain->expand_row($path);
 
 		// Change icon
-		$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/server2.png", 14, -1);
-		$this->getView()->trvModel->set_value($iter, 0, $pixbuf);
+		$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database1.png", 14, -1);
+		$this->getView()->trvModel->set_value($current_iter, 0, $pixbuf);
 
+		// Set as connected
 		$this->servers[$path]['connected'] = TRUE;
+
+
+// Verify to abstract database connect and change icon to set database connected
+
+		// Retreave schemas
+		$schemas = $this->connects[$path][$database]->getSchemas($database);
+		
+		// Add to treeview
+		foreach($schemas as $schema) {
+			// Create the pixbub
+			$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database1.png", 14, -1);
+			$model->append($current_iter, [$pixbuf, $schema, 3]); // 3 for schemas controller
+		}
+
+		$this->getView()->trvMain->expand_row($path = $model->get_path($current_iter));
 	}
 
 	/**
@@ -218,44 +260,42 @@ class startController extends \Fabula\Mvc\Controller
 	 */
 	public function doubleClickedDatabase($path, $iter, $model) 
 	{
-		
-	}
+		$paths = explode(":", $path);
 
-}
+		// Get database name selected and verify if ar connected
+		$database = $model->get_value($iter, 1);
+		if(!isset($this->connects[$paths[0]][$database])) {
 
+			// Create the connection
+			$host = $this->servers[$paths[0]]['host'];
+			$username = $this->servers[$paths[0]]['username'];
+			$password = $this->servers[$paths[0]]['password'];
+			$test = $this->connectToDatabase($paths[0], $host, $username, $password, $database, $iter);
+			if(!$test) {
+				return false;
+			}
 
-// Abstract
-function getAllDatabases($connection)
-{
-	$query = "SELECT datname FROM pg_database WHERE datistemplate = false;";
-	$result = $connection->query($query);
+			// Retreave schemas
+			$schemas = $this->connects[$paths[0]][$database]->getSchemas($database);
+			
+			// Add to treeview
+			foreach($schemas as $schema) {
+				// Create the pixbub
+				$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database1.png", 14, -1);
+				$this->getView()->trvModel->append($iter, [$pixbuf, $schema, 3]); // 3 for schemas controller
+			}
 
-	$databases = [];
-	foreach ($result as $row) {
-		$databases[] = $row['datname'];
-	}
-
-	sort($databases);
-
-	return $databases;
-}
-
-function getAllShemas($connection)
-{
-	$exclude = ["pg_toast", "pg_temp_1", "pg_toast_temp_1", "information_schema", "pg_catalog"];
-
-	$query = "select schema_name from information_schema.schemata;";
-	$result = $connection->query($query);
-
-	$schemas = [];
-	foreach ($result as $row) {
-		if(in_array($row['schema_name'], $exclude)) {
-			continue;
+			$this->getView()->trvMain->expand_row($path);
 		}
-		$schemas[] = $row['schema_name'];
+		else {
+			// Expand or collapse row
+			if($this->getView()->trvMain->row_expanded($path))
+				$this->getView()->trvMain->collapse_row($path);
+			else
+				$this->getView()->trvMain->expand_row($path);
+
+			return false;
+		}
 	}
 
-	sort($schemas);
-
-	return $schemas;
 }
