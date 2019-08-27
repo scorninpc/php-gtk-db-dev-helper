@@ -163,32 +163,6 @@ class startController extends \Fabula\Mvc\Controller
 	}
 
 	/**
-	 *
-	 */
-	public function connectToDatabase($path, $host, $username, $password, $database, $iter=NULL)
-	{
-		// Verify if can connect and if not, show dialog
-		try {
-			$this->connects[$path][$database] = new \dbHelper\Helpers\Database($host, $database, $username, $password);
-		}
-		catch(\Exception $e) {
-			// Not connected
-			$dialog = \GtkMessageDialog::new_with_markup($this->widgets['mainWindow'], \GtkDialogFlags::MODAL, \GtkMessageType::ERROR, \GtkButtonsType::OK, $e->getMessage());
-			$a = $dialog->run();
-			$dialog->destroy();
-
-			return false;
-		}
-
-		// Change database connected icon
-		$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database1.png", 14, -1);
-		$this->getView()->trvModel->set_value($iter, 0, $pixbuf);
-
-
-		return true;
-	}
-
-	/**
 	 * Double click on treeview server item
 	 */
 	public function doubleClickedServer($path, $iter, $model)
@@ -211,13 +185,23 @@ class startController extends \Fabula\Mvc\Controller
 		$username = $this->servers[$path]['username'];
 		$password = $this->servers[$path]['password'];
 		$database = $this->servers[$path]['database'];
-		$test = $this->connectToDatabase($path, $host, $username, $password, $database, $iter);
-		if(!$test) {
+
+		// Verify if can connect and if not, show dialog
+		try {
+			$test = new \dbHelper\Helpers\Database($host, $database, $username, $password);
+			$this->servers[$path]['connected'] = TRUE;
+		}
+		catch(\Exception $e) {
+			// Not connected
+			$dialog = \GtkMessageDialog::new_with_markup($this->widgets['mainWindow'], \GtkDialogFlags::MODAL, \GtkMessageType::ERROR, \GtkButtonsType::OK, $e->getMessage());
+			$a = $dialog->run();
+			$dialog->destroy();
+
 			return false;
 		}
 
 		// Retreave databases
-		$databases = $this->connects[$path][$database]->getDatabases();
+		$databases = $test->getDatabases();
 
 		// Add to treeview
 		foreach($databases as $row) {
@@ -232,27 +216,12 @@ class startController extends \Fabula\Mvc\Controller
 		}
 		$this->getView()->trvMain->expand_row($path);
 
-		// Change icon
-		$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database1.png", 14, -1);
-		$this->getView()->trvModel->set_value($current_iter, 0, $pixbuf);
+		// Change icon from server
+		$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/server2.png", 14, -1);
+		$this->getView()->trvModel->set_value($iter, 0, $pixbuf);
 
-		// Set as connected
-		$this->servers[$path]['connected'] = TRUE;
-
-
-// Verify to abstract database connect and change icon to set database connected
-
-		// Retreave schemas
-		$schemas = $this->connects[$path][$database]->getSchemas($database);
-		
-		// Add to treeview
-		foreach($schemas as $schema) {
-			// Create the pixbub
-			$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database1.png", 14, -1);
-			$model->append($current_iter, [$pixbuf, $schema, 3]); // 3 for schemas controller
-		}
-
-		$this->getView()->trvMain->expand_row($path = $model->get_path($current_iter));
+		// Send double click on default database
+		$this->doubleClickedDatabase($a = $model->get_path($current_iter), $current_iter, $model);
 	}
 
 	/**
@@ -260,9 +229,10 @@ class startController extends \Fabula\Mvc\Controller
 	 */
 	public function doubleClickedDatabase($path, $iter, $model) 
 	{
+		
 		$paths = explode(":", $path);
 
-		// Get database name selected and verify if ar connected
+		// Get database name selected and verify if are connected
 		$database = $model->get_value($iter, 1);
 		if(!isset($this->connects[$paths[0]][$database])) {
 
@@ -270,8 +240,17 @@ class startController extends \Fabula\Mvc\Controller
 			$host = $this->servers[$paths[0]]['host'];
 			$username = $this->servers[$paths[0]]['username'];
 			$password = $this->servers[$paths[0]]['password'];
-			$test = $this->connectToDatabase($paths[0], $host, $username, $password, $database, $iter);
-			if(!$test) {
+
+			// Verify if can connect and if not, show dialog
+			try {
+				$this->connects[$paths[0]][$database] = new \dbHelper\Helpers\Database($host, $database, $username, $password);
+			}
+			catch(\Exception $e) {
+				// Not connected
+				$dialog = \GtkMessageDialog::new_with_markup($this->widgets['mainWindow'], \GtkDialogFlags::MODAL, \GtkMessageType::ERROR, \GtkButtonsType::OK, $e->getMessage());
+				$a = $dialog->run();
+				$dialog->destroy();
+
 				return false;
 			}
 
@@ -285,6 +264,11 @@ class startController extends \Fabula\Mvc\Controller
 				$this->getView()->trvModel->append($iter, [$pixbuf, $schema, 3]); // 3 for schemas controller
 			}
 
+			// Change icon of database
+			$pixbuf = \GdkPixbuf::new_from_file_at_size(APPLICATION_PATH . "/assets/icons/database3.png", 14, -1);
+			$this->getView()->trvModel->set_value($iter, 0, $pixbuf);
+
+			// Expand row
 			$this->getView()->trvMain->expand_row($path);
 		}
 		else {
@@ -294,7 +278,6 @@ class startController extends \Fabula\Mvc\Controller
 			else
 				$this->getView()->trvMain->expand_row($path);
 
-			return false;
 		}
 	}
 
